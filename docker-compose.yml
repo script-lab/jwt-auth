@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  db:
+    image: "mysql"
+    container_name: "DOCKER_MYSQL"
+    restart: always
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_PASSWORD
+      MYSQL_DATABASE: $DB_NAME
+
+  golang:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: "air -c .air.toml"
+    volumes:
+      - .:/go/src/github.com/script-lab/jwt-auth
+    ports:
+      - "1323:1323"
+    depends_on:
+      - db
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_PASSWORD
+      MYSQL_HOST: "DOCKER_MYSQL"
+      MYSQL_DATABASE: $DB_NAME
