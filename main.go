@@ -6,6 +6,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/script-lab/jwt-auth/database"
 	"github.com/script-lab/jwt-auth/model"
@@ -45,6 +46,10 @@ func main() {
 	}
 	sqlDB, _ := database.Mysql.DB()
 	defer sqlDB.Close()
+
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
 
 	// Routing
 	e.GET("/", handler)
