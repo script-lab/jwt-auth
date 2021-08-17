@@ -17,18 +17,20 @@ func handler(c echo.Context) error {
 }
 
 func signUp(c echo.Context) error {
-	u := new(model.User)
-	if err := c.Bind(u); err != nil {
-		return err
-	}
+	name := c.FormValue("name")
+	email := c.FormValue("email")
+	password := c.FormValue("password")
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(u.Password), 14)
-	password := string(hash)
+	passwordHash, _ := bcrypt.GenerateFromPassword([]byte(password), 14)
 
 	user := model.User{
-		Name:     u.Name,
-		Email:    u.Email,
-		Password: password,
+		Name:     name,
+		Email:    email,
+		Password: passwordHash,
+	}
+
+	if err := c.Bind(&user); err != nil {
+		return err
 	}
 
 	database.Mysql.Create(&user)
