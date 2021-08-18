@@ -78,6 +78,28 @@ func login(c echo.Context) error {
 	})
 }
 
+func authenticate(c echo.Context) error {
+	cookie, err := c.Cookie("jwt")
+	if err != nil {
+		return err
+	}
+
+	token, err := jwt.ParseWithClaims(cookie.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(SecretKey), nil
+	})
+	if err != nil {
+		return err
+	}
+
+	claims := token.Claims.(*jwt.StandardClaims)
+
+	user := model.User{}
+
+	database.Mysql.Where("id = ?", claims.Issuer).First(&user)
+
+	return c.JSON(http.StatusOK, user)
+}
+
 func main() {
 	e := echo.New()
 
@@ -104,6 +126,7 @@ func main() {
 	// Routing
 	e.POST("/signUp", signUp)
 	e.POST("/login", login)
+	e.GET("/authenticate", authenticate)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":1323"))
