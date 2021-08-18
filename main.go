@@ -2,9 +2,12 @@ package main
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/form3tech-oss/jwt-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -12,31 +15,114 @@ import (
 	"github.com/script-lab/jwt-auth/model"
 )
 
-func handler(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello Go!")
-}
+const SecretKey = "secret"
 
 func signUp(c echo.Context) error {
-	u := new(model.User)
-	if err := c.Bind(u); err != nil {
-		return err
-	}
+	name := c.FormValue("name")
+	email := c.FormValue("email")
+	password := c.FormValue("password")
 
-	hash, _ := bcrypt.GenerateFromPassword([]byte(u.Password), 14)
-	password := string(hash)
+	passwordHash, _ := bcrypt.GenerateFromPassword([]byte(password), 14)
 
 	user := model.User{
-		Name:     u.Name,
-		Email:    u.Email,
-		Password: password,
+		Name:     name,
+		Email:    email,
+		Password: passwordHash,
+	}
+
+	if err := c.Bind(&user); err != nil {
+		return err
 	}
 
 	database.Mysql.Create(&user)
 	return c.JSON(http.StatusCreated, user)
 }
 
+func login(c echo.Context) error {
+	user := model.User{}
+	if err := c.Bind(&user); err != nil {
+		return err
+	}
+	email := c.QueryParam("email")
+	database.Mysql.Where("email = ?", email).First(&user)
+
+	if user.ID == 0 {
+		return c.JSON(http.StatusBadRequest, user)
+	}
+
+	comparePassword := c.QueryParam("password")
+	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(comparePassword)); err != nil {
+		return err
+	}
+
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
+		Issuer:    strconv.Itoa(int(user.ID)),
+		ExpiresAt: time.Now().Add(time.Hour * 24).Unix(),
+	})
+
+	token, err := claims.SignedString([]byte(SecretKey))
+	if err != nil {
+		return err
+	}
+
+	cookie := new(http.Cookie)
+	cookie.Name = "jwt"
+	cookie.Value = token
+	cookie.Expires = time.Now().Add(time.Hour * 24)
+	cookie.HttpOnly = true
+	c.SetCookie(cookie)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"token":   token,
+		"message": "success",
+	})
+}
+
+func authenticate(c echo.Context) error {
+	cookie, err := c.Cookie("jwt")
+	if err != nil {
+		return err
+	}
+
+	token, err := jwt.ParseWithClaims(cookie.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(SecretKey), nil
+	})
+	if err != nil {
+		return err
+	}
+
+	claims := token.Claims.(*jwt.StandardClaims)
+
+	user := model.User{}
+
+	database.Mysql.Where("id = ?", claims.Issuer).First(&user)
+
+	return c.JSON(http.StatusOK, user)
+}
+
+func logout(c echo.Context) error {
+	cookie := new(http.Cookie)
+	cookie.Name = "jwt"
+	cookie.Value = ""
+	cookie.Expires = time.Now().Add(-time.Hour)
+	cookie.HttpOnly = true
+
+	c.SetCookie(cookie)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "success",
+	})
+}
+
 func main() {
 	e := echo.New()
+
+	// cors
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+		AllowCredentials: true,
+	}))
 
 	// Database
 	database.Connect()
@@ -52,8 +138,10 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Routing
-	e.GET("/", handler)
 	e.POST("/signUp", signUp)
+	e.POST("/login", login)
+	e.GET("/authenticate", authenticate)
+	e.POST("/logout", logout)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":1323"))
