@@ -17,10 +17,6 @@ import (
 
 const SecretKey = "secret"
 
-func handler(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello Go!")
-}
-
 func signUp(c echo.Context) error {
 	name := c.FormValue("name")
 	email := c.FormValue("email")
@@ -85,6 +81,13 @@ func login(c echo.Context) error {
 func main() {
 	e := echo.New()
 
+	// cors
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+		AllowCredentials: true,
+	}))
+
 	// Database
 	database.Connect()
 	database.Mysql.AutoMigrate(&model.User{})
@@ -99,7 +102,6 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Routing
-	e.GET("/", handler)
 	e.POST("/signUp", signUp)
 	e.POST("/login", login)
 
