@@ -100,6 +100,20 @@ func authenticate(c echo.Context) error {
 	return c.JSON(http.StatusOK, user)
 }
 
+func logout(c echo.Context) error {
+	cookie := new(http.Cookie)
+	cookie.Name = "jwt"
+	cookie.Value = ""
+	cookie.Expires = time.Now().Add(-time.Hour)
+	cookie.HttpOnly = true
+
+	c.SetCookie(cookie)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"message": "success",
+	})
+}
+
 func main() {
 	e := echo.New()
 
@@ -127,6 +141,7 @@ func main() {
 	e.POST("/signUp", signUp)
 	e.POST("/login", login)
 	e.GET("/authenticate", authenticate)
+	e.POST("/logout", logout)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":1323"))
