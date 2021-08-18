@@ -17,10 +17,6 @@ import (
 
 const SecretKey = "secret"
 
-func handler(c echo.Context) error {
-	return c.String(http.StatusOK, "Hello Go!")
-}
-
 func signUp(c echo.Context) error {
 	name := c.FormValue("name")
 	email := c.FormValue("email")
@@ -82,8 +78,37 @@ func login(c echo.Context) error {
 	})
 }
 
+func authenticate(c echo.Context) error {
+	cookie, err := c.Cookie("jwt")
+	if err != nil {
+		return err
+	}
+
+	token, err := jwt.ParseWithClaims(cookie.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return []byte(SecretKey), nil
+	})
+	if err != nil {
+		return err
+	}
+
+	claims := token.Claims.(*jwt.StandardClaims)
+
+	user := model.User{}
+
+	database.Mysql.Where("id = ?", claims.Issuer).First(&user)
+
+	return c.JSON(http.StatusOK, user)
+}
+
 func main() {
 	e := echo.New()
+
+	// cors
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowHeaders:     []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept},
+		AllowCredentials: true,
+	}))
 
 	// Database
 	database.Connect()
@@ -99,9 +124,9 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Routing
-	e.GET("/", handler)
 	e.POST("/signUp", signUp)
 	e.POST("/login", login)
+	e.GET("/authenticate", authenticate)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":1323"))
