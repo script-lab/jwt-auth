@@ -2,15 +2,20 @@ package main
 
 import (
 	"net/http"
+	"strconv"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/form3tech-oss/jwt-go"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/script-lab/jwt-auth/database"
 	"github.com/script-lab/jwt-auth/model"
 )
+
+const SecretKey = "secret"
 
 func handler(c echo.Context) error {
 	return c.String(http.StatusOK, "Hello Go!")
@@ -37,6 +42,46 @@ func signUp(c echo.Context) error {
 	return c.JSON(http.StatusCreated, user)
 }
 
+func login(c echo.Context) error {
+	user := model.User{}
+	if err := c.Bind(&user); err != nil {
+		return err
+	}
+	email := c.QueryParam("email")
+	database.Mysql.Where("email = ?", email).First(&user)
+
+	if user.ID == 0 {
+		return c.JSON(http.StatusBadRequest, user)
+	}
+
+	comparePassword := c.QueryParam("password")
+	if err := bcrypt.CompareHashAndPassword(user.Password, []byte(comparePassword)); err != nil {
+		return err
+	}
+
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.StandardClaims{
+		Issuer:    strconv.Itoa(int(user.ID)),
+		ExpiresAt: time.Now().Add(time.Hour * 24).Unix(),
+	})
+
+	token, err := claims.SignedString([]byte(SecretKey))
+	if err != nil {
+		return err
+	}
+
+	cookie := new(http.Cookie)
+	cookie.Name = "jwt"
+	cookie.Value = token
+	cookie.Expires = time.Now().Add(time.Hour * 24)
+	cookie.HttpOnly = true
+	c.SetCookie(cookie)
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"token":   token,
+		"message": "success",
+	})
+}
+
 func main() {
 	e := echo.New()
 
@@ -56,6 +101,7 @@ func main() {
 	// Routing
 	e.GET("/", handler)
 	e.POST("/signUp", signUp)
+	e.POST("/login", login)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":1323"))
